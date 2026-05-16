@@ -45,3 +45,6 @@ This project is created strictly for educational, cinematic, and UI design purpo
 
 ⚖️ Legal Notice
 This application acts purely as a concept visual simulator. Unauthorized account verification, brute-forcing real authentication mechanisms, or deploying malicious automated scrapers against production platforms is illegal. This content must only be used in controlled, legal, and ethical environments for educational and defensive software development research.
+
+
+Since I code in Turkish, the code contains Turkish explanations to make it easier for Turkish users to use and modify for themselves. :7
